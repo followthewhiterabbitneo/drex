@@ -148,22 +148,19 @@ echo "📝 Updating package.json..."
 npm install express cors mysql2 dotenv concurrently
 
 # Update package.json scripts
-cat > package.json.tmp << 'EOF'
-{
-  "name": "drex",
-  "private": true,
-  "version": "0.0.0",
-  "type": "module",
-  "scripts": {
-    "dev": "concurrently \"npm run api\" \"vite\"",
-    "api": "node src/api/monitor.js",
-    "build": "tsc -b && vite build",
-    "preview": "vite preview",
-    "start": "concurrently \"npm run api\" \"npm run preview\""
-  },
-EOF
-tail -n +11 package.json >> package.json.tmp
-mv package.json.tmp package.json
+node -e "
+const fs = require('fs');
+const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+pkg.scripts = {
+  ...pkg.scripts,
+  'dev': 'concurrently \"npm run api\" \"vite\"',
+  'api': 'node src/api/monitor.js',
+  'build': 'tsc -b && vite build',
+  'preview': 'vite preview',
+  'start': 'concurrently \"npm run api\" \"npm run preview\"'
+};
+fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));
+"
 
 # Step 6: Create environment configuration
 echo "🔐 Creating environment configuration..."
