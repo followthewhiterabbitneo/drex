@@ -183,6 +183,7 @@ cat > src/app.tsx << 'EOF'
 import { useState, useEffect } from 'preact/hooks'
 import './app.css'
 import { Speedometer } from './components/Speedometer'
+import { RedlineMonitor } from './components/RedlineMonitor'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
@@ -197,6 +198,7 @@ export function App() {
   });
 
   const [locks, setLocks] = useState([]);
+  const [isRedlining, setIsRedlining] = useState(false);
 
   useEffect(() => {
     const fetchMetrics = async () => {
@@ -204,6 +206,12 @@ export function App() {
         const response = await fetch(`${API_URL}/api/metrics`);
         const data = await response.json();
         setMetrics(data);
+        
+        // Check if we're redlining
+        const redlining = data.lockedQueries > 10 || 
+                         data.activeConnections > 80 || 
+                         data.queriesPerSecond > 250;
+        setIsRedlining(redlining);
       } catch (error) {
         console.error('Failed to fetch metrics:', error);
       }
@@ -230,9 +238,15 @@ export function App() {
   }, []);
 
   return (
-    <>
+    <div className={isRedlining ? 'app redlining' : 'app'}>
       <h1>DREX - MariaDB Monitor (Oreka)</h1>
       <h2>Host: ${DB_HOST} | Database: ${DB_NAME}</h2>
+      
+      <RedlineMonitor 
+        locks={metrics.lockedQueries}
+        connections={metrics.activeConnections}
+        queryRate={Math.round(metrics.queriesPerSecond)}
+      />
       
       <div class="dashboard">
         <div class="gauge-container">
@@ -283,7 +297,7 @@ export function App() {
           </table>
         </div>
       )}
-    </>
+    </div>
   )
 }
 EOF
@@ -291,6 +305,16 @@ EOF
 # Step 8: Add lock monitoring styles
 echo "🎨 Adding lock monitoring styles..."
 cat >> src/app.css << 'EOF'
+
+.app.redlining {
+  animation: redline-pulse 2s infinite;
+  background: linear-gradient(45deg, rgba(255,0,0,0.1) 0%, transparent 50%, rgba(255,0,0,0.1) 100%);
+}
+
+@keyframes redline-pulse {
+  0%, 100% { background-color: rgba(0,0,0,0.9); }
+  50% { background-color: rgba(255,0,0,0.1); }
+}
 
 .locks-section {
   margin-top: 2rem;
