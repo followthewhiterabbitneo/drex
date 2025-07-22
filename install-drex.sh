@@ -29,7 +29,11 @@ fi
 echo "📚 Installing dependencies..."
 npm install
 
-# Step 3: Create API backend for MariaDB monitoring
+# Step 3: Create src/api directory
+echo "📁 Creating API directory..."
+mkdir -p src/api
+
+# Step 4: Create API backend for MariaDB monitoring
 echo "🔧 Creating MariaDB monitoring backend..."
 cat > src/api/monitor.js << 'EOF'
 const mysql = require('mysql2/promise');
@@ -139,7 +143,7 @@ app.listen(PORT, () => {
 });
 EOF
 
-# Step 4: Update package.json with new dependencies
+# Step 5: Update package.json with new dependencies
 echo "📝 Updating package.json..."
 npm install express cors mysql2 dotenv concurrently
 
@@ -161,7 +165,7 @@ EOF
 tail -n +11 package.json >> package.json.tmp
 mv package.json.tmp package.json
 
-# Step 5: Create environment configuration
+# Step 6: Create environment configuration
 echo "🔐 Creating environment configuration..."
 cat > .env << EOF
 DB_HOST=${DB_HOST}
@@ -173,7 +177,7 @@ API_PORT=3001
 VITE_API_URL=http://localhost:3001
 EOF
 
-# Step 6: Update frontend to use real API
+# Step 7: Update frontend to use real API
 echo "🎨 Updating frontend to use real API..."
 cat > src/app.tsx << 'EOF'
 import { useState, useEffect } from 'preact/hooks'
@@ -284,7 +288,7 @@ export function App() {
 }
 EOF
 
-# Step 7: Add lock monitoring styles
+# Step 8: Add lock monitoring styles
 echo "🎨 Adding lock monitoring styles..."
 cat >> src/app.css << 'EOF'
 
@@ -321,11 +325,11 @@ tr:hover {
 }
 EOF
 
-# Step 8: Build the application
+# Step 9: Build the application
 echo "🏗️ Building DREX..."
 npm run build
 
-# Step 9: Create systemd service
+# Step 10: Create systemd service
 echo "🚀 Creating systemd service..."
 sudo tee /etc/systemd/system/drex.service << EOF
 [Unit]
@@ -344,7 +348,7 @@ Restart=always
 WantedBy=multi-user.target
 EOF
 
-# Step 10: Start the service
+# Step 11: Start the service
 echo "✅ Starting DREX service..."
 sudo systemctl daemon-reload
 sudo systemctl enable drex
