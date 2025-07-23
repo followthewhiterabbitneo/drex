@@ -53,6 +53,19 @@ const apiServer = http.createServer(async (req, res) => {
       const [status] = await connection.execute('SHOW GLOBAL STATUS');
       const [processList] = await connection.execute('SHOW PROCESSLIST');
       
+      // Try to get InnoDB lock info (may not be available on older MariaDB)
+      let innodbLocks = 0;
+      try {
+        const [lockWaits] = await connection.execute(
+          'SELECT COUNT(*) as count FROM information_schema.INNODB_LOCK_WAITS'
+        );
+        if (lockWaits[0]) {
+          innodbLocks = parseInt(lockWaits[0].count) || 0;
+        }
+      } catch (e) {
+        // Ignore if table doesn't exist
+      }
+      
       const statusMap = {};
       status.forEach(row => {
         statusMap[row.Variable_name] = row.Value;
@@ -76,7 +89,23 @@ const apiServer = http.createServer(async (req, res) => {
       
       processList.forEach(proc => {
         if (proc.Command === 'Sleep') sleepingCount++;
-        if (proc.State && proc.State.includes('lock')) lockCount++;
+        
+        // Enhanced lock detection - catch all lock-related states
+        if (proc.State) {
+          const state = proc.State.toLowerCase();
+          if (state.includes('lock') || 
+              state.includes('waiting') ||
+              state.includes('locked') ||
+              state.includes('metadata') ||
+              state.includes('flush')) {
+            lockCount++;
+          }
+        }
+        
+        // Also check if query is stuck for a long time (potential lock)
+        if (proc.Time > 10 && proc.Command === 'Query') {
+          lockCount++;
+        }
         
         // Track orktag activity
         if (proc.Info && proc.Info.toLowerCase().includes('orktag')) {
@@ -89,6 +118,9 @@ const apiServer = http.createServer(async (req, res) => {
           connectionDetails[ip] = (connectionDetails[ip] || 0) + 1;
         }
       });
+      
+      // Add InnoDB locks to total
+      lockCount += innodbLocks;
       
       // Update high water marks
       highWaterMarks.qps = Math.max(highWaterMarks.qps, qps);
