@@ -12,12 +12,12 @@ const config = {
   WEB_PORT: 3000
 };
 
-// Speedometer limits - UPDATED FOR REALITY!
+// Speedometer limits - ADJUSTED FOR ACTUAL LOAD!
 const LIMITS = {
-  qps: { max: 15000, warning: 2000, danger: 5000 },  // Can handle 9800!
-  connections: { max: 200, warning: 100, danger: 150 },
+  qps: { max: 15000, warning: 2000, danger: 5000 },  // Handles 9800
+  connections: { max: 250, warning: 150, danger: 200 },  // Handles 180
   locks: { max: 50, warning: 10, danger: 20 },
-  sleeping: { max: 150, warning: 50, danger: 100 }
+  sleeping: { max: 250, warning: 100, danger: 150 }  // Handles 150+
 };
 
 // Track QPS
