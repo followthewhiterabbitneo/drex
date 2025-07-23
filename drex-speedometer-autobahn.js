@@ -20,16 +20,9 @@ const LIMITS = {
   sleeping: { max: 100, warning: 30, danger: 50 }
 };
 
-// Track QPS and high water marks
+// Track QPS
 let lastQuestions = 0;
 let lastTime = Date.now();
-let highWaterMarks = {
-  qps: 0,
-  connections: 0,
-  locks: 0,
-  sleeping: 0,
-  orktag: 0
-};
 
 const pool = mysql.createPool({
   host: config.DB_HOST,
@@ -68,42 +61,20 @@ const apiServer = http.createServer(async (req, res) => {
       lastQuestions = currentQuestions;
       lastTime = currentTime;
       
-      // Count sleeping connections, locks, and analyze activity
+      // Count sleeping connections and locks
       let sleepingCount = 0;
       let lockCount = 0;
-      let orktagActivity = 0;
-      const connectionDetails = {};
       
       processList.forEach(proc => {
         if (proc.Command === 'Sleep') sleepingCount++;
         if (proc.State && proc.State.includes('lock')) lockCount++;
-        
-        // Track orktag activity
-        if (proc.Info && proc.Info.toLowerCase().includes('orktag')) {
-          orktagActivity++;
-        }
-        
-        // Track connections by host
-        if (proc.Host) {
-          const ip = proc.Host.split(':')[0];
-          connectionDetails[ip] = (connectionDetails[ip] || 0) + 1;
-        }
       });
       
-      // Update high water marks
-      highWaterMarks.qps = Math.max(highWaterMarks.qps, qps);
-      highWaterMarks.connections = Math.max(highWaterMarks.connections, parseInt(statusMap.Threads_connected) || 0);
-      highWaterMarks.locks = Math.max(highWaterMarks.locks, lockCount);
-      highWaterMarks.sleeping = Math.max(highWaterMarks.sleeping, sleepingCount);
-      highWaterMarks.orktag = Math.max(highWaterMarks.orktag, orktagActivity);
-      
       const metrics = {
-        qps: { value: qps, ...LIMITS.qps, highWater: highWaterMarks.qps },
-        connections: { value: parseInt(statusMap.Threads_connected) || 0, ...LIMITS.connections, highWater: highWaterMarks.connections },
-        locks: { value: lockCount, ...LIMITS.locks, highWater: highWaterMarks.locks },
-        sleeping: { value: sleepingCount, ...LIMITS.sleeping, highWater: highWaterMarks.sleeping },
-        orktag: { value: orktagActivity, max: 20, warning: 5, danger: 10, highWater: highWaterMarks.orktag },
-        connectionDetails: connectionDetails,
+        qps: { value: qps, ...LIMITS.qps },
+        connections: { value: parseInt(statusMap.Threads_connected) || 0, ...LIMITS.connections },
+        locks: { value: lockCount, ...LIMITS.locks },
+        sleeping: { value: sleepingCount, ...LIMITS.sleeping },
         timestamp: new Date().toISOString()
       };
       
@@ -176,7 +147,7 @@ const webServer = http.createServer((req, res) => {
       position: relative;
       width: 350px;
       height: 200px;
-      margin: 0 auto 10px;
+      margin: 0 auto 20px;
     }
     
     .speedometer-face {
@@ -238,42 +209,6 @@ const webServer = http.createServer((req, res) => {
       font-weight: bold;
       color: #00ff00;
       text-shadow: 0 0 10px #00ff00;
-    }
-    
-    .high-water-mark {
-      position: absolute;
-      width: 2px;
-      height: 110px;
-      background: #ffff00;
-      left: 50%;
-      bottom: 0;
-      margin-left: -1px;
-      transform-origin: center bottom;
-      opacity: 0.7;
-      pointer-events: none;
-    }
-    
-    .high-water-label {
-      font-size: 14px;
-      color: #ffff00;
-      margin: 5px 0;
-    }
-    
-    .connection-details {
-      font-size: 12px;
-      color: #666;
-      margin: 10px 0;
-      text-align: left;
-      padding: 10px;
-      background: #111;
-      border-radius: 5px;
-      max-height: 100px;
-      overflow-y: auto;
-    }
-    
-    .connection-ip {
-      color: #00ff00;
-      margin: 2px 0;
     }
     
     .redline {
@@ -375,13 +310,10 @@ const webServer = http.createServer((req, res) => {
           <div class="tick" style="transform: rotate(72deg)"></div>
           <div class="tick major" style="transform: rotate(90deg)"></div>
           <div class="redline"></div>
-          <div class="high-water-mark" id="qpsHighWater"></div>
           <div class="needle" id="qpsNeedle"></div>
           <div class="value-display" id="qpsValue">0</div>
         </div>
-        <div class="high-water-label">High: <span id="qpsHigh">0</span></div>
       </div>
-      <div class="connection-details" id="qpsDetails"></div>
     </div>
     
     <div class="speedometer-container" id="connContainer">
@@ -400,13 +332,10 @@ const webServer = http.createServer((req, res) => {
           <div class="tick" style="transform: rotate(72deg)"></div>
           <div class="tick major" style="transform: rotate(90deg)"></div>
           <div class="redline"></div>
-          <div class="high-water-mark" id="connHighWater"></div>
           <div class="needle" id="connNeedle"></div>
           <div class="value-display" id="connValue">0</div>
         </div>
-        <div class="high-water-label">High: <span id="connHigh">0</span></div>
       </div>
-      <div class="connection-details" id="connDetails"></div>
     </div>
     
     <div class="speedometer-container" id="sleepContainer">
@@ -425,13 +354,10 @@ const webServer = http.createServer((req, res) => {
           <div class="tick" style="transform: rotate(72deg)"></div>
           <div class="tick major" style="transform: rotate(90deg)"></div>
           <div class="redline"></div>
-          <div class="high-water-mark" id="sleepHighWater"></div>
           <div class="needle" id="sleepNeedle"></div>
           <div class="value-display" id="sleepValue">0</div>
         </div>
-        <div class="high-water-label">High: <span id="sleepHigh">0</span></div>
       </div>
-      <div class="connection-details" id="sleepDetails"></div>
     </div>
     
     <div class="speedometer-container" id="lockContainer">
@@ -450,36 +376,9 @@ const webServer = http.createServer((req, res) => {
           <div class="tick" style="transform: rotate(72deg)"></div>
           <div class="tick major" style="transform: rotate(90deg)"></div>
           <div class="redline"></div>
-          <div class="high-water-mark" id="lockHighWater"></div>
           <div class="needle" id="lockNeedle"></div>
           <div class="value-display" id="lockValue">0</div>
         </div>
-        <div class="high-water-label">High: <span id="lockHigh">0</span></div>
-      </div>
-      <div class="connection-details" id="lockDetails"></div>
-    </div>
-    
-    <div class="speedometer-container" id="orktagContainer">
-      <div class="label">ORKTAG Activity</div>
-      <div class="speedometer">
-        <div class="speedometer-face">
-          <div class="tick major" style="transform: rotate(-90deg)"></div>
-          <div class="tick" style="transform: rotate(-72deg)"></div>
-          <div class="tick" style="transform: rotate(-54deg)"></div>
-          <div class="tick" style="transform: rotate(-36deg)"></div>
-          <div class="tick" style="transform: rotate(-18deg)"></div>
-          <div class="tick major" style="transform: rotate(0deg)"></div>
-          <div class="tick" style="transform: rotate(18deg)"></div>
-          <div class="tick" style="transform: rotate(36deg)"></div>
-          <div class="tick" style="transform: rotate(54deg)"></div>
-          <div class="tick" style="transform: rotate(72deg)"></div>
-          <div class="tick major" style="transform: rotate(90deg)"></div>
-          <div class="redline"></div>
-          <div class="high-water-mark" id="orktagHighWater"></div>
-          <div class="needle" id="orktagNeedle"></div>
-          <div class="value-display" id="orktagValue">0</div>
-        </div>
-        <div class="high-water-label">High: <span id="orktagHigh">0</span></div>
       </div>
     </div>
   </div>
@@ -489,8 +388,6 @@ const webServer = http.createServer((req, res) => {
       const needle = document.getElementById(metric + 'Needle');
       const valueDisplay = document.getElementById(metric + 'Value');
       const container = document.getElementById(metric + 'Container');
-      const highWaterMark = document.getElementById(metric + 'HighWater');
-      const highLabel = document.getElementById(metric + 'High');
       
       const value = data.value;
       const max = data.max;
@@ -498,15 +395,6 @@ const webServer = http.createServer((req, res) => {
       
       needle.style.transform = 'rotate(' + angle + 'deg)';
       valueDisplay.textContent = value;
-      
-      // Update high water mark
-      if (highWaterMark && data.highWater !== undefined) {
-        const highAngle = Math.min((data.highWater / max) * 180 - 90, 90);
-        highWaterMark.style.transform = 'rotate(' + highAngle + 'deg)';
-      }
-      if (highLabel) {
-        highLabel.textContent = data.highWater || 0;
-      }
       
       // Color coding
       valueDisplay.classList.remove('warning', 'danger');
@@ -528,22 +416,6 @@ const webServer = http.createServer((req, res) => {
       }
     }
     
-    function updateConnectionDetails(data) {
-      // Update connection details for the main gauges
-      if (data.connectionDetails) {
-        const topIPs = Object.entries(data.connectionDetails)
-          .sort((a, b) => b[1] - a[1])
-          .slice(0, 5)
-          .map(([ip, count]) => `<div class="connection-ip">${ip}: ${count} connections</div>`)
-          .join('');
-        
-        const detailsEl = document.getElementById('connDetails');
-        if (detailsEl) {
-          detailsEl.innerHTML = topIPs || '<div style="color: #333">No active connections</div>';
-        }
-      }
-    }
-    
     function update() {
       fetch('http://' + window.location.hostname + ':${config.API_PORT}/api/drex-metrics')
         .then(r => r.json())
@@ -552,10 +424,6 @@ const webServer = http.createServer((req, res) => {
           updateSpeedometer('conn', data.connections);
           updateSpeedometer('sleep', data.sleeping);
           updateSpeedometer('lock', data.locks);
-          if (data.orktag) {
-            updateSpeedometer('orktag', data.orktag);
-          }
-          updateConnectionDetails(data);
         })
         .catch(err => console.error('Update error:', err));
     }
