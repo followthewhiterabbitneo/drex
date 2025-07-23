@@ -86,6 +86,7 @@ const apiServer = http.createServer(async (req, res) => {
       let lockCount = 0;
       let orktagActivity = 0;
       const connectionDetails = {};
+      const orekaConnections = {};
       
       processList.forEach(proc => {
         if (proc.Command === 'Sleep') sleepingCount++;
@@ -116,6 +117,13 @@ const apiServer = http.createServer(async (req, res) => {
         if (proc.Host) {
           const ip = proc.Host.split(':')[0];
           connectionDetails[ip] = (connectionDetails[ip] || 0) + 1;
+          
+          // Identify Oreka/Analytics connections by user or pattern
+          if (proc.User && (proc.User.toLowerCase().includes('oreka') || 
+              proc.User.toLowerCase().includes('analytics') ||
+              proc.User.toLowerCase().includes('call'))) {
+            orekaConnections[ip] = (orekaConnections[ip] || 0) + 1;
+          }
         }
       });
       
@@ -136,6 +144,8 @@ const apiServer = http.createServer(async (req, res) => {
         sleeping: { value: sleepingCount, ...LIMITS.sleeping, highWater: highWaterMarks.sleeping },
         orktag: { value: orktagActivity, max: 20, warning: 5, danger: 10, highWater: highWaterMarks.orktag },
         connectionDetails: connectionDetails,
+        orekaConnections: orekaConnections,
+        orekaPodCount: Object.keys(orekaConnections).length,
         timestamp: new Date().toISOString()
       };
       
@@ -513,6 +523,7 @@ const webServer = http.createServer((req, res) => {
         </div>
         <div class="high-water-label">High: <span id="orktagHigh">0</span></div>
       </div>
+      <div class="connection-details" id="orktagDetails"></div>
     </div>
   </div>
   
@@ -566,12 +577,28 @@ const webServer = http.createServer((req, res) => {
         const topIPs = Object.entries(data.connectionDetails)
           .sort((a, b) => b[1] - a[1])
           .slice(0, 5)
-          .map(([ip, count]) => `<div class="connection-ip">${ip}: ${count} connections</div>`)
+          .map(([ip, count]) => {
+            const isOreka = data.orekaConnections && data.orekaConnections[ip];
+            const color = isOreka ? '#ff0000' : '#00ff00';
+            const label = isOreka ? ' [OREKA POD]' : '';
+            return `<div class="connection-ip" style="color: ${color}">${ip}: ${count} connections${label}</div>`;
+          })
           .join('');
         
         const detailsEl = document.getElementById('connDetails');
         if (detailsEl) {
           detailsEl.innerHTML = topIPs || '<div style="color: #333">No active connections</div>';
+        }
+      }
+      
+      // Show Oreka pod info
+      if (data.orekaConnections && data.orekaPodCount > 0) {
+        const orktagDetailsEl = document.getElementById('orktagDetails');
+        if (orktagDetailsEl) {
+          const podList = Object.entries(data.orekaConnections)
+            .map(([ip, count]) => `<div style="color: #ff0000">POD ${ip}: ${count} connections</div>`)
+            .join('');
+          orktagDetailsEl.innerHTML = `<div style="color: #ff6600; font-weight: bold;">${data.orekaPodCount} OREKA PODS DETECTED!</div>${podList}`;
         }
       }
     }
